@@ -998,8 +998,8 @@ function Get-HVEvent {
     if ($timeFilter -ne "") {
       if ($filterQuery -ne "") { $filterQuery = $filterQuery + " AND" }
 
-      if ($isSqlType) { $filterQuery = $filterQuery + " FORMAT(Time, 'MM/dd/yyyy HH:mm:ss.fff')" }
-      else { $timePeriodQuery = $filterQuery = $filterQuery + " TO_CHAR(Time, 'MM/DD/YYYY HH24:MI:SS.FF3')" }
+      if ($isSqlType) { $filterQuery = $filterQuery + " Time " }
+      else { $timePeriodQuery = $filterQuery = $filterQuery + " Time " }
 
       if ($filterType -eq 'contains') { $filterQuery = $filterQuery + " LIKE '%$timeFilter%'" }
       elseif ($filterType -eq 'startsWith') { $filterQuery = $filterQuery + " LIKE '$timeFilter%'" }
@@ -1034,23 +1034,23 @@ function Get-HVEvent {
     $fromDate = $toDate.AddDays(- ($timeInDays))
 
     if ($timePeriod -eq 'all') {
-      if ($isSqlType) { $timePeriodQuery = " FORMAT(Time, 'MM/dd/yyyy HH:mm:ss.fff') < '" + $toDate + "'" }
-      else { $timePeriodQuery = " TO_CHAR(Time, 'MM/DD/YYYY HH24:MI:SS.FF3') < '" + $toDate + "'" }
+      if ($isSqlType) { $timePeriodQuery = " Time < '" + $toDate + "'" }
+      else { $timePeriodQuery = " Time < '" + $toDate + "'" }
     } else {
-      if ($isSqlType) { $timePeriodQuery = " FORMAT(Time, 'MM/dd/yyyy HH:mm:ss.fff')   BETWEEN '" + $fromDate + "' AND  '" + $toDate + "'" }
-      else { $timePeriodQuery = " TO_CHAR(Time, 'MM/DD/YYYY HH24:MI:SS.FF3') BETWEEN '" + $fromDate + "' AND  '" + $toDate + "'" }
+      if ($isSqlType) { $timePeriodQuery = " Time   BETWEEN '" + $fromDate + "' AND  '" + $toDate + "'" }
+      else { $timePeriodQuery = " Time BETWEEN '" + $fromDate + "' AND  '" + $toDate + "'" }
     }
 
 
     # Build the Query string based on the database type and filter parameters
     if ($isSqlType) {
-      $query = "SELECT  UserSID.StrValue AS UserName, Severity, FORMAT(Time, 'MM/dd/yyyy HH:mm:ss.fff') as EventTime, Module, ModuleAndEventText AS Message FROM $eventTable " +
+      $query = "SELECT  UserSID.StrValue AS UserName, Severity, Time as EventTime, Module, ModuleAndEventText AS Message FROM $eventTable " +
       " LEFT OUTER JOIN (SELECT EventID, StrValue FROM $eventDataTable WITH (NOLOCK)  WHERE (Name = 'UserDisplayName')) UserSID ON $eventTable.EventID = UserSID.EventID "
       $query = $query + " WHERE $timePeriodQuery"
       if ($filterQuery -ne "") { $query = $query + " AND $filterQuery" }
       $query = $query + " ORDER BY EventTime DESC"
     } else {
-      $query = " SELECT UserSID.StrValue AS UserName, Severity, TO_CHAR(Time, 'MM/DD/YYYY HH24:MI:SS.FF3') AS EventTime, Module, ModuleAndEventText AS Message FROM $eventTable " +
+      $query = " SELECT UserSID.StrValue AS UserName, Severity, Time AS EventTime, Module, ModuleAndEventText AS Message FROM $eventTable " +
       " LEFT OUTER JOIN (SELECT EventID, StrValue FROM $eventDataTable WHERE (Name = 'UserDisplayName')) UserSID ON $eventTable.EventID = UserSID.EventID"
       $query = $query + " WHERE $timePeriodQuery"
       if ($filterQuery -ne "") { $query = $query + " AND $filterQuery" }
@@ -5185,6 +5185,9 @@ function Get-HVPoolProvisioningData {
     if ($null -eq $templateVM) {
       throw "No template VM found with Name: [$template]"
     }
+	if (-not $vmObject) {
+		$vmObject = New-Object Omnissa.Horizon.DesktopVirtualCenterProvisioningData
+	}
     $vmObject.Template = $templateVM.id
     $dataCenterID = $templateVM.datacenter
     if ($dataCenter -and $dataCenterID) {
@@ -7010,6 +7013,10 @@ function Start-HVPool {
 .PARAMETER Vcenter
     Virtual Center server-address (IP or FQDN) of the given pool. This should be same as provided to the Connection Server while adding the vCenter server.
 
+
+.PARAMETER AddVirtualTPM
+    Switch parameter to add virtual TPM to the desktop VMs during push image operation. Only applicable for instant clone pools with SchedulePushImage operation.
+	
 .PARAMETER HvServer
     View API service object of Connect-HVServer cmdlet.
 
@@ -7030,6 +7037,10 @@ function Start-HVPool {
     Start-HVPool -SchedulePushImage -Pool 'InstantPool' -LogoffSetting FORCE_LOGOFF -ParentVM 'InsParentVM' -SnapshotVM 'InsSnapshotVM'
     Requests an update of push image operation on the specified Instant Clone Engine sourced pool
 
+.EXAMPLE
+    Start-HVPool -SchedulePushImage -Pool 'InstantPool' -LogoffSetting FORCE_LOGOFF -ParentVM 'InsParentVM' -SnapshotVM 'InsSnapshotVM' -AddVirtualTPM
+    Requests an update of push image operation on the specified Instant Clone Engine sourced pool with virtual TPM enabled
+	
 .EXAMPLE
     Start-HVPool -CancelPushImage -Pool 'InstantPool'
     Requests a cancellation of the current scheduled push image operation on the specified Instant Clone Engine sourced pool
@@ -7107,6 +7118,9 @@ function Start-HVPool {
     [Parameter(Mandatory = $false,ParameterSetName = 'RECOMPOSE')]
     [Parameter(Mandatory = $false,ParameterSetName = 'PUSH_IMAGE')]
     [string]$Vcenter,
+	
+	[Parameter(Mandatory = $false,ParameterSetName = 'PUSH_IMAGE')]
+    [switch]$AddVirtualTPM,
 
     [Parameter(Mandatory = $false)]
     $HvServer = $null
@@ -7237,10 +7251,16 @@ function Start-HVPool {
             $spec.Settings = New-Object Omnissa.Horizon.DesktopPushImageSettings
             $spec.Settings.LogoffSetting = $logoffSetting
             $spec.Settings.StopOnFirstError = $stopOnFirstError
-            $spec.Settings.AddVirtualTPM = ($poolProvisioningSpecs.$item).AddVirtualTPM
-            If (($poolProvisioningSpecs.$item).AddVirtualTPM) {
-            Write-Verbose -Message "Restoring previous vTPM state"
-            }
+			# Use explicit parameter if provided, otherwise restore from pool provisioning specs
+            if ($PSBoundParameters.ContainsKey('AddVirtualTPM')) {
+              $spec.Settings.AddVirtualTPM = $AddVirtualTPM.IsPresent
+              Write-Verbose -Message "Setting vTPM from parameter: $($AddVirtualTPM.IsPresent)"
+            } else {
+              $spec.Settings.AddVirtualTPM = ($poolProvisioningSpecs.$item).AddVirtualTPM
+              If (($poolProvisioningSpecs.$item).AddVirtualTPM) {
+                Write-Verbose -Message "Restoring previous vTPM state"
+              }
+			}
             Write-Debug -Message "fetched pool provisioning specs: $(($poolProvisioningSpecs.$item) | Out-String)"
             if ($startTime) { $spec.Settings.startTime = $startTime }
             if (!$confirmFlag -OR  $pscmdlet.ShouldProcess($poolList.$item)) {
