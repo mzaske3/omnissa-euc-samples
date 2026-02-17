@@ -122,4 +122,4 @@ fi
 echo "${full_list}"
 # Description: Use SoftwareUpdate to display latest OS available for the specific device
 # Execution Context: SYSTEM
-# Return Type: INTEGER
+# Return Type: STRING
