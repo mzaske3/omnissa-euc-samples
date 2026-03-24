@@ -1,4 +1,4 @@
-# ws1_update_supported_models
+# Update macOS Supported Models
 
 Developed by: Matt Zaske (mzaske@omnissa.com) | 2026-03-19
 
@@ -32,7 +32,7 @@ python3 /path/to/ws1_update_supported_models.py \
 
 Parameters / Flags
 ------------------
-| Name | Required | Default | Type | Notes |
+| Flag Name | Required | Default | Type | Notes |
 |---|---:|---|---|---|
 | `--base-url` | Y  | None | string (URL) | WS1 API base URL, e.g. `https://as1234.awmdm.com` |
 | `--token` | N (either this OR `--client-id`+`--client-secret`) | None | string | Bearer token; if provided, OAuth flow is skipped |
