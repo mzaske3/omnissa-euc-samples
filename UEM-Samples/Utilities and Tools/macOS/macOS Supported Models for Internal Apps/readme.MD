@@ -4,7 +4,9 @@ Developed by: Matt Zaske (mzaske@omnissa.com) | 2026-03-19
 
 Purpose
 -------
+<!-- Summary Start -->
 Small helper script to add one or more supported macOS device models (default: `MacBook Neo`) to Workspace ONE UEM internal macOS applications.
+<!-- Summary End -->
 
 Requirements
 ------------
